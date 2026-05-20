@@ -21,7 +21,20 @@ export interface TokenCookieOptions {
 }
 
 const ALGORITHM = "HS256";
-const TOKEN_EXPIRY_SECONDS = 3600; // 1 hour
+const DEFAULT_TOKEN_EXPIRY_SECONDS = 3600; // 1 hour
+
+/**
+ * Read MOCK_TOKEN_EXPIRY_SECONDS lazily at call time.
+ * Falls back to DEFAULT_TOKEN_EXPIRY_SECONDS (3600) if unset or non-numeric.
+ */
+function getTokenExpirySeconds(): number {
+  const env = process.env.MOCK_TOKEN_EXPIRY_SECONDS;
+  if (env) {
+    const parsed = Number(env);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_TOKEN_EXPIRY_SECONDS;
+}
 
 // --- base64url helpers (RFC 4648 §5) ---
 
@@ -109,10 +122,10 @@ export interface JwtPayload {
 /**
  * Sign a payload into a JWT string (HS256, base64url encoding).
  */
-export async function sign(payload: JwtPayload): Promise<string> {
+export async function sign(payload: JwtPayload, expiresInSeconds?: number): Promise<string> {
   const header = { alg: ALGORITHM, typ: "JWT" };
   const now = Math.floor(Date.now() / 1000);
-  const signedPayload = { ...payload, iat: now, exp: now + TOKEN_EXPIRY_SECONDS };
+  const signedPayload = { ...payload, iat: now, exp: now + (expiresInSeconds ?? getTokenExpirySeconds()) };
 
   const headerB64 = base64urlEncode(JSON.stringify(header));
   const payloadB64 = base64urlEncode(JSON.stringify(signedPayload));
@@ -175,15 +188,36 @@ export async function verify(token: string): Promise<JwtPayload | null> {
 /**
  * Get cookie options for JWT tokens.
  *
- * Note: secure is set to false in dev/test environments to allow cookies
- * over HTTP (localhost). In production, browsers require HTTPS with secure: true.
+ * Secure is always false because mock portals are served over plain HTTP on
+ * localhost — browsers silently drop Secure cookies on non-HTTPS origins.
  */
 export function tokenCookieOptions(): TokenCookieOptions {
   return {
     httpOnly: true,
-    secure: !isDevOrTest(),
+    secure: false,
     sameSite: "Strict",
-    maxAge: TOKEN_EXPIRY_SECONDS,
+    maxAge: getTokenExpirySeconds(),
     path: "/",
   };
+}
+
+/**
+ * Serialize a Set-Cookie header value from a name/value pair and cookie options.
+ *
+ * Does NOT URL-encode the value — callers must ensure the value contains no
+ * characters that conflict with cookie syntax (';', whitespace). Safe for JWTs
+ * by construction (base64url alphabet has no reserved cookie characters).
+ */
+export function serializeCookie(
+  name: string,
+  value: string,
+  opts: TokenCookieOptions,
+): string {
+  let cookie = `${name}=${value}`;
+  if (opts.httpOnly) cookie += "; HttpOnly";
+  if (opts.secure) cookie += "; Secure";
+  cookie += `; SameSite=${opts.sameSite}`;
+  cookie += `; Max-Age=${opts.maxAge}`;
+  cookie += `; Path=${opts.path}`;
+  return cookie;
 }

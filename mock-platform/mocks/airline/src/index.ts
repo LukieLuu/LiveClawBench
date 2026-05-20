@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
-import { createMockApp, createRoute, startServer, registerFrontendFallback } from "mock-lib";
+import { createMockApp, createRoute, startServer, registerFrontendFallback, verify } from "mock-lib";
 import { getAirlineDb, initSchema } from "./db";
 import { seedDatabase } from "./seed";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerProfileRoutes } from "./routes/profile";
 import { registerFlightRoutes } from "./routes/flights";
 import { registerBookingRoutes } from "./routes/bookings";
-import { registerSeatRoutes } from "./routes/seats";
 import { registerCheckinRoutes } from "./routes/checkin";
 import { registerClaimRoutes } from "./routes/claims";
 import { registerBaggageRoutes } from "./routes/baggage";
@@ -56,12 +55,34 @@ export function createAirlineApp(options?: { dbPath?: string; frontendDir?: stri
 
   app.openApiRoute(sentinelRoute, (c) => c.json({ ok: true }));
 
+  // Validate token when present; reject expired/invalid tokens with 401.
+  // Auth endpoints (/login, /register, /refresh) are always exempt so clients
+  // can recover from expired sessions without clearing cookies manually.
+  // Requests with no token proceed without userId (routes fall back to DEFAULT_USER_ID).
+  app.use("/api/*", async (c, next) => {
+    const path = c.req.path;
+    const isAuthEndpoint = path === "/api/auth/login" || path === "/api/auth/register" || path === "/api/auth/refresh";
+    if (isAuthEndpoint) {
+      await next();
+      return;
+    }
+    const bearerToken = c.req.header("Authorization")?.startsWith("Bearer ")
+      ? c.req.header("Authorization")!.slice(7) : null;
+    const cookieToken = c.req.header("cookie")?.match(/(?:^|;\s*)token=([^;]*)/)?.[1] ?? null;
+    const token = bearerToken ?? cookieToken;
+    if (token) {
+      const payload = await verify(token);
+      if (!payload) return c.json({ ok: false, error: "Invalid or expired token" }, 401);
+      c.set("userId", payload.userId as number);
+    }
+    await next();
+  });
+
   // Register all route modules
   registerAuthRoutes(app, db);
   registerProfileRoutes(app, db);
   registerFlightRoutes(app, db);
   registerBookingRoutes(app, db);
-  registerSeatRoutes(app, db);
   registerCheckinRoutes(app, db);
   registerClaimRoutes(app, db);
   registerBaggageRoutes(app, db);

@@ -32,8 +32,9 @@ export function registerCalendarRoutes(app: OpenAPIApp, db: Database, prefix: st
     const startDate = query.start_date;
     const endDate = query.end_date;
 
+    const userId = (c.get("userId") ?? DEFAULT_USER_ID);
     let sql = "SELECT * FROM calendar_events WHERE user_id = ?";
-    const params: (number | string)[] = [DEFAULT_USER_ID];
+    const params: (number | string)[] = [userId];
 
     if (startDate) {
       sql += " AND start_time >= ?";

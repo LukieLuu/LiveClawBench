@@ -87,12 +87,19 @@ async function verifyIsolation(results: BuildResult[]): Promise<{ violations: Ma
   // Sentinel routes registered by each mock stub — must match mocks/*/src/index.ts
   const sentinelPatterns: Record<string, string> = {
     airline: "/__mock_sentinel__/airline",
+    calendar: "/__mock_sentinel__/calendar",
     email: "/__mock_sentinel__/email",
     shop: "/__mock_sentinel__/shop",
     todolist: "/__mock_sentinel__/todolist",
     "doc-search": "/__mock_sentinel__/doc-search",
+    finance: "/__mock_sentinel__/finance",
+    insurance: "/__mock_sentinel__/insurance",
     "mint-diet": "/__mock_sentinel__/mint-diet",
     weather: "/__mock_sentinel__/weather",
+    social: "/__mock_sentinel__/social",
+    expense: "/__mock_sentinel__/expense",
+    health: "/__mock_sentinel__/health",
+    smarthome: "/__mock_sentinel__/smarthome",
   };
 
   const successfulMocks = results.filter((r) => r.success);
